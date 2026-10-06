@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         min_length=1,
     )
 
-    gemini_llm_model: str = "gemini-2.5-flash"
+    gemini_llm_model: str = "gemini-3.8-flash"
 
     model_config = SettingsConfigDict(
         env_file=".env",
