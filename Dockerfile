@@ -38,7 +38,9 @@ WORKDIR /app
 RUN groupadd --system app \
     && useradd --system --gid app --create-home app
 
-COPY --from=builder --chown=app:app /app/.venv /app/.venv
+# Application code and dependencies are owned by root.
+# The non-root runtime user can read/execute but cannot modify them.
+COPY --from=builder /app/.venv /app/.venv
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
