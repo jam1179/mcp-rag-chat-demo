@@ -10,6 +10,8 @@ def make_settings(monkeypatch):
     for field_name in Settings.model_fields:
         monkeypatch.delenv(field_name.upper(), raising=False)
 
+    monkeypatch.delenv("GEMINI_API_KEY_FILE", raising=False)
+
     def factory(**overrides):
         values = {"gemini_api_key": "test-api-key"}
         values.update(overrides)
@@ -22,13 +24,15 @@ def make_settings(monkeypatch):
 def test_valid_default_settings(make_settings):
     settings = make_settings()
 
-    assert settings.mcp_server_url == ("http://127.0.0.1:8000/mcp")
+    assert settings.mcp_server_url == "http://127.0.0.1:8000/mcp"
     assert settings.gemini_llm_model == "gemini-3.8-flash"
 
 
 def test_missing_api_key(monkeypatch):
     for field_name in Settings.model_fields:
         monkeypatch.delenv(field_name.upper(), raising=False)
+
+    monkeypatch.delenv("GEMINI_API_KEY_FILE", raising=False)
 
     with pytest.raises(ValidationError) as exc_info:
         Settings(_env_file=None)
@@ -41,6 +45,7 @@ def test_missing_api_key(monkeypatch):
     ["", " ", "   ", "\t", "\n"],
 )
 def test_blank_api_key_rejected(monkeypatch, api_key):
+    monkeypatch.delenv("GEMINI_API_KEY_FILE", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", api_key)
 
     with pytest.raises(ValidationError):
@@ -97,7 +102,7 @@ def test_valid_docker_configuration(make_settings):
         gemini_llm_model="gemini-3.8-flash",
     )
 
-    assert settings.mcp_server_url == ("http://mcp-rag-server:8000/mcp")
+    assert settings.mcp_server_url == "http://mcp-rag-server:8000/mcp"
 
 
 def test_api_key_not_exposed_in_model_repr(make_settings):
@@ -111,6 +116,7 @@ def test_api_key_not_exposed_in_model_repr(make_settings):
 def test_invalid_api_key_not_exposed_in_error(monkeypatch):
     invalid_secret = "   "
 
+    monkeypatch.delenv("GEMINI_API_KEY_FILE", raising=False)
     monkeypatch.setenv("GEMINI_API_KEY", invalid_secret)
 
     with pytest.raises(ValidationError) as exc_info:
@@ -124,7 +130,90 @@ def test_invalid_api_key_not_exposed_in_error(monkeypatch):
     assert len(errors) == 1
     assert errors[0]["loc"] == ("gemini_api_key",)
     assert errors[0]["type"] == "value_error"
-
-    # Sanitized error details must not contain the supplied value.
     assert "input" not in errors[0]
     assert "ctx" not in errors[0]
+
+
+# ---------------------------------------------------------
+# Gemini File-Based Credential Tests
+# ---------------------------------------------------------
+
+
+def test_api_key_loaded_from_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    secret_file = tmp_path / "gemini-api-key"
+    secret_file.write_text("file-secret-key\n", encoding="utf-8")
+
+    monkeypatch.setenv("GEMINI_API_KEY_FILE", str(secret_file))
+
+    settings = Settings(_env_file=None)
+
+    assert settings.gemini_api_key == "file-secret-key"
+
+
+def test_file_takes_precedence_over_environment(monkeypatch, tmp_path):
+    secret_file = tmp_path / "gemini-api-key"
+    secret_file.write_text("file-secret-key", encoding="utf-8")
+
+    monkeypatch.setenv("GEMINI_API_KEY", "environment-secret-key")
+    monkeypatch.setenv("GEMINI_API_KEY_FILE", str(secret_file))
+
+    settings = Settings(_env_file=None)
+
+    assert settings.gemini_api_key == "file-secret-key"
+
+
+def test_constructor_takes_precedence_over_file(monkeypatch, tmp_path):
+    secret_file = tmp_path / "gemini-api-key"
+    secret_file.write_text("file-secret-key", encoding="utf-8")
+
+    monkeypatch.setenv("GEMINI_API_KEY_FILE", str(secret_file))
+
+    settings = Settings(
+        _env_file=None,
+        gemini_api_key="constructor-secret-key",
+    )
+
+    assert settings.gemini_api_key == "constructor-secret-key"
+
+
+def test_missing_secret_file_fails_closed(monkeypatch, tmp_path):
+    monkeypatch.setenv("GEMINI_API_KEY", "fallback-secret-key")
+    monkeypatch.setenv(
+        "GEMINI_API_KEY_FILE",
+        str(tmp_path / "missing-secret"),
+    )
+
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_empty_secret_file_fails_closed(monkeypatch, tmp_path):
+    secret_file = tmp_path / "gemini-api-key"
+    secret_file.write_text(" \n ", encoding="utf-8")
+
+    monkeypatch.setenv("GEMINI_API_KEY_FILE", str(secret_file))
+
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_blank_secret_file_path_rejected(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY_FILE", "   ")
+
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_file_secret_not_exposed_in_repr(monkeypatch, tmp_path):
+    secret = "sensitive-file-secret"
+
+    secret_file = tmp_path / "gemini-api-key"
+    secret_file.write_text(secret, encoding="utf-8")
+
+    monkeypatch.setenv("GEMINI_API_KEY_FILE", str(secret_file))
+
+    settings = Settings(_env_file=None)
+
+    assert secret not in repr(settings)

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from typing import Any
 
 import streamlit as st
@@ -8,6 +9,8 @@ from mcp_rag_chat.chat import ChatAnswer, ChatService
 from mcp_rag_chat.client import RAGChatClient
 from mcp_rag_chat.config.settings import Settings
 from mcp_rag_chat.llm import GeminiLLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 def format_page_reference(
@@ -134,6 +137,7 @@ def main() -> None:
                     )
                 )
             except Exception:
+                logger.exception("Chat request failed")
                 error_message = "I couldn't complete the request. Please try again."
 
                 st.error(error_message)

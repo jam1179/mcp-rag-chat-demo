@@ -1,7 +1,13 @@
 from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+from mcp_rag_chat.config.gemini_secret_source import GeminiSecretFileSource
 
 
 class Settings(BaseSettings):
@@ -69,6 +75,23 @@ class Settings(BaseSettings):
             raise ValueError("MCP server URL must contain a valid path")
 
         return value
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            GeminiSecretFileSource(settings_cls),
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
 
     # ---------------------------------------------------------
     # Pydantic Settings Configuration
